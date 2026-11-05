@@ -5,7 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use bebersih_lib::models::CleanCategory;
 use bebersih_lib::scanner::system::{
-    parse_journal_disk_usage, scan_system_caches, scan_system_caches_with_config, SystemScanConfig,
+    parse_journal_disk_usage, scan_apt_cache, scan_crash_logs, scan_system_caches,
+    scan_system_caches_with_config, scan_thumbnails_cache, SystemScanConfig,
 };
 
 struct TestDir {
@@ -70,6 +71,18 @@ fn test_parse_journal_disk_usage() {
     assert_eq!(
         parse_journal_disk_usage("Journals take up 1024B in the file system."),
         Some(1024)
+    );
+    assert_eq!(
+        parse_journal_disk_usage("Journals takes up 1.5GiB on disk."),
+        Some((1.5 * 1024.0 * 1024.0 * 1024.0) as u64)
+    );
+    assert_eq!(
+        parse_journal_disk_usage("Archived journals take up 20MiB in the file system."),
+        Some(20 * 1024 * 1024)
+    );
+    assert_eq!(
+        parse_journal_disk_usage("Active journals take up 1TiB on disk."),
+        Some(1024 * 1024 * 1024 * 1024)
     );
     assert_eq!(parse_journal_disk_usage("Invalid output with no size"), None);
     assert_eq!(parse_journal_disk_usage(""), None);
@@ -222,4 +235,32 @@ fn test_scan_system_caches_default_does_not_panic() {
     // Verifies calling the public default entry point completes cleanly on the host system
     let result = scan_system_caches(30);
     assert!(result.is_ok(), "scan_system_caches should return Ok on real system");
+}
+
+#[test]
+fn test_scan_apt_cache_empty_or_no_debs() {
+    let test_dir = TestDir::new("apt_empty");
+    assert_eq!(scan_apt_cache(&test_dir.path), None);
+
+    let not_deb = test_dir.path.join("somefile.txt");
+    create_file(&not_deb, 1024);
+    assert_eq!(scan_apt_cache(&test_dir.path), None);
+}
+
+#[test]
+fn test_scan_crash_logs_and_thumbnails() {
+    let test_dir = TestDir::new("crash_test");
+    let crash_dir = test_dir.path.join("crash");
+    fs::create_dir_all(&crash_dir).unwrap();
+
+    let old_crash = crash_dir.join("core.crash");
+    create_file(&old_crash, 4096);
+    set_file_mtime_days_ago(&old_crash, 10);
+
+    let items = scan_crash_logs(&crash_dir, 7).expect("scan_crash_logs should succeed");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].size_bytes, 4096);
+
+    let thumb_item = scan_thumbnails_cache(&test_dir.path).expect("thumbnails item returned");
+    assert_eq!(thumb_item.category, CleanCategory::StaleCache);
 }
