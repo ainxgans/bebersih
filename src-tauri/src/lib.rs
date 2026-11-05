@@ -1,8 +1,10 @@
 pub mod error;
 pub mod models;
+pub mod scanner;
 
 pub use error::AppError;
 pub use models::*;
+pub use scanner::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
