@@ -102,6 +102,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           args: --bundles deb,appimage
 
@@ -135,11 +136,11 @@ jobs:
           TAG="${{ steps.release_meta.outputs.tag }}"
           TITLE="${{ steps.release_meta.outputs.title }}"
 
-          # Locate built deb and AppImage files without duplicates
+          # Locate built deb, AppImage, and updater artifacts without duplicates
           FILES=()
           while IFS= read -r f; do
             [ -n "$f" ] && FILES+=("$f")
-          done < <(find src-tauri/target -path "*/bundle/*" -type f \( -name "*.deb" -o -name "*.AppImage" \) 2>/dev/null | sort -u)
+          done < <(find src-tauri/target -type f \( -name "*.deb" -o -name "*.AppImage" -o -name "*.tar.gz" -o -name "*.sig" -o -name "latest.json" \) 2>/dev/null | sort -u)
 
           if [ ${#FILES[@]} -eq 0 ]; then
             echo "Error: No release bundles found to upload!"
@@ -167,6 +168,9 @@ jobs:
           path: |
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/*/*.tar.gz
+            src-tauri/target/release/bundle/*/*.sig
+            src-tauri/target/**/latest.json
             src-tauri/target/*/bundle/deb/*.deb
             src-tauri/target/*/bundle/appimage/*.AppImage
           retention-days: 14
