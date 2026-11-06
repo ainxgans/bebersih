@@ -68,6 +68,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -96,17 +98,74 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build Tauri app & release on tag
+      - name: Build Tauri bundles
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-          releaseName: "Bebersih ${{ github.ref_name }}"
-          releaseBody: "Automated release of Bebersih Ubuntu cleaner."
-          releaseDraft: false
-          prerelease: false
           args: --bundles deb,appimage
+
+      - name: Determine Release Tag and Title
+        id: release_meta
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+            TITLE="Bebersih ${TAG}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+            if gh release view "v${VERSION}" >/dev/null 2>&1; then
+              TAG="v${VERSION}-build.${{ github.run_number }}"
+              TITLE="Bebersih v${VERSION} (Build ${{ github.run_number }})"
+            else
+              TAG="v${VERSION}"
+              TITLE="Bebersih v${VERSION}"
+            fi
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "title=${TITLE}" >> $GITHUB_OUTPUT
+
+      - name: Publish GitHub Release with Release Notes
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release_meta.outputs.tag }}"
+          TITLE="${{ steps.release_meta.outputs.title }}"
+
+          # Locate built deb and AppImage files
+          FILES=()
+          for pattern in 'src-tauri/target/release/bundle/deb/*.deb' \
+                         'src-tauri/target/release/bundle/appimage/*.AppImage' \
+                         'src-tauri/target/*/bundle/deb/*.deb' \
+                         'src-tauri/target/*/bundle/appimage/*.AppImage'; do
+            for f in $pattern; do
+              if [ -f "$f" ]; then
+                FILES+=("$f")
+              fi
+            done
+          done
+
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "Error: No release bundles found to upload!"
+            exit 1
+          fi
+
+          echo "Found bundles to release: ${FILES[*]}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Updating existing release $TAG..."
+            gh release upload "$TAG" "${FILES[@]}" --clobber
+            gh release edit "$TAG" --title "$TITLE" --generate-notes
+          else
+            echo "Creating new release $TAG..."
+            gh release create "$TAG" "${FILES[@]}" \
+              --title "$TITLE" \
+              --generate-notes \
+              --target "${{ github.sha }}"
+          fi
 
       - name: Upload Linux bundles artifact
         uses: actions/upload-artifact@v4
