@@ -117,6 +117,41 @@ pub fn clean_items(
     clean_items_with_root_runner(items, move_project_to_trash, root::execute_root_batch)
 }
 
+pub fn clean_items_with_whitelist(
+    items: &[CleanItem],
+    move_project_to_trash: bool,
+    config: &crate::whitelist::WhitelistConfig,
+) -> Result<CleanReport, AppError> {
+    let mut safe_items = Vec::new();
+    let mut report = CleanReport::default();
+
+    for item in items {
+        if !item.selected {
+            continue;
+        }
+
+        if let Some(ref path_str) = item.path {
+            let path = Path::new(path_str);
+            if crate::whitelist::is_path_ignored_or_whitelisted(path, config) {
+                report.errors.push(format!(
+                    "{}: Path is whitelisted or ignored by .bebersihignore: {:?}",
+                    item.id, path
+                ));
+                continue;
+            }
+        }
+
+        safe_items.push(item.clone());
+    }
+
+    let inner_report = clean_items(&safe_items, move_project_to_trash)?;
+    report.deleted_bytes += inner_report.deleted_bytes;
+    report.freed_items.extend(inner_report.freed_items);
+    report.errors.extend(inner_report.errors);
+
+    Ok(report)
+}
+
 pub fn clean_items_with_root_runner<F>(
     items: &[CleanItem],
     move_project_to_trash: bool,
@@ -198,6 +233,25 @@ where
                     }
                     Err(e) => {
                         report.errors.push(format!("{}: failed to run docker: {}", item.id, e));
+                    }
+                }
+            } else if item.id.starts_with("flatpak:") {
+                let status = std::process::Command::new("flatpak")
+                    .args(["uninstall", "--unused", "-y"])
+                    .status();
+                match status {
+                    Ok(s) if s.success() => {
+                        report.deleted_bytes += item.size_bytes;
+                        report.freed_items.push(item.id.clone());
+                    }
+                    Ok(s) => {
+                        report.errors.push(format!(
+                            "{}: flatpak uninstall failed with status {:?}",
+                            item.id, s
+                        ));
+                    }
+                    Err(e) => {
+                        report.errors.push(format!("{}: failed to run flatpak: {}", item.id, e));
                     }
                 }
             }

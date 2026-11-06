@@ -112,9 +112,21 @@ fn test_generate_root_batch_script() {
         selected: true,
     };
 
-    let script = generate_root_batch_script(&[apt_item, journal_item]);
+    let snap_item = CleanItem {
+        id: "snap:core20:2015".to_string(),
+        category: CleanCategory::SnapFlatpak,
+        label: "Old snap revision: core20 (rev 2015)".to_string(),
+        path: Some("/var/lib/snapd/snaps/core20_2015.snap".to_string()),
+        size_bytes: 50_000_000,
+        requires_root: true,
+        supports_trash: false,
+        selected: true,
+    };
+
+    let script = generate_root_batch_script(&[apt_item, journal_item, snap_item]);
     assert!(script.contains("apt-get clean"));
     assert!(script.contains("journalctl --vacuum-time=7d"));
+    assert!(script.contains("snap remove --revision=2015 core20"));
 }
 
 #[test]

@@ -5,11 +5,18 @@ pub enum CleanCategory {
     DevRust,
     DevGo,
     DevNode,
+    DevPython,
+    DevJvm,
     DockerCache,
     DockerVolume,
     AptCache,
     SystemLogs,
     StaleCache,
+    BrowserCache,
+    UserTrash,
+    SnapFlatpak,
+    IdeCache,
+    LargeFiles,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

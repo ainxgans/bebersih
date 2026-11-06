@@ -1,4 +1,4 @@
-import { CleanItem, CleanReport } from "../types";
+import { CleanItem, CleanReport, CleanupHistory } from "../types";
 
 export const isTauriEnvironment = (): boolean => {
   return (
@@ -134,4 +134,55 @@ export async function getDiskFreeSpace(): Promise<number> {
 
   // Development mock: 48 GB free
   return 48 * 1024 * 1024 * 1024;
+}
+
+export async function emptyTrash(): Promise<CleanReport> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<CleanReport>("empty_trash");
+  }
+
+  // Development mock fallback
+  await new Promise((res) => setTimeout(res, 800));
+  return {
+    deleted_bytes: 120 * 1024 * 1024,
+    freed_items: ["trash:mock-item"],
+    errors: [],
+  };
+}
+
+export async function getWhitelist(): Promise<string[]> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<string[]>("get_whitelist");
+  }
+  return ["/home/user/work/my-precious-repo"];
+}
+
+export async function addToWhitelist(path: string): Promise<string[]> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<string[]>("add_to_whitelist", { path });
+  }
+  return ["/home/user/work/my-precious-repo", path];
+}
+
+export async function removeFromWhitelist(path: string): Promise<string[]> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<string[]>("remove_from_whitelist", { path });
+  }
+  return [];
+}
+
+export async function getCleanupHistory(): Promise<CleanupHistory> {
+  if (isTauriEnvironment()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<CleanupHistory>("get_cleanup_history");
+  }
+  return {
+    total_freed_bytes: 4200 * 1024 * 1024,
+    total_clean_runs: 5,
+    records: [],
+  };
 }

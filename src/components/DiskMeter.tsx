@@ -8,6 +8,7 @@ interface DiskMeterProps {
   selectedBytes: number;
   itemCount: number;
   isScanning: boolean;
+  totalReclaimedBytes?: number;
 }
 
 export const DiskMeter: React.FC<DiskMeterProps> = ({
@@ -16,6 +17,7 @@ export const DiskMeter: React.FC<DiskMeterProps> = ({
   selectedBytes,
   itemCount,
   isScanning,
+  totalReclaimedBytes,
 }) => {
   // Estimated base size for reference (or total proportional bar calculation)
   // Assume a baseline drive size for meter representation: freeBytes + foundBytes
@@ -70,6 +72,18 @@ export const DiskMeter: React.FC<DiskMeterProps> = ({
               {formatBytes(freeBytes)}
             </span>
           </div>
+
+          {totalReclaimedBytes !== undefined && totalReclaimedBytes > 0 && (
+            <>
+              <div className="h-8 w-px bg-slate-800 hidden sm:block" />
+              <div>
+                <span className="text-slate-400 block mb-0.5">Total Reclaimed</span>
+                <span className="font-mono tabular-nums text-sm font-semibold text-cyan-400">
+                  {formatBytes(totalReclaimedBytes)}
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

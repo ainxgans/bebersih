@@ -3,30 +3,40 @@ import { Header } from "./components/Header";
 import { DiskMeter } from "./components/DiskMeter";
 import { CategoryCard } from "./components/CategoryCard";
 import { ItemTable } from "./components/ItemTable";
+import { ActionBar } from "./components/ActionBar";
 import { CleanConfirmModal } from "./components/CleanConfirmModal";
 import { CleanItem, CleanCategory, CleanReport } from "./types";
 import {
   scanAll,
   cleanSelected,
   getDiskFreeSpace,
+  getCleanupHistory,
+  emptyTrash,
 } from "./services/api";
-import { formatBytes } from "./utils/format";
-import { AlertCircle, Trash2 } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 
 const ALL_CATEGORIES: CleanCategory[] = [
   "DevRust",
   "DevGo",
   "DevNode",
+  "DevPython",
+  "DevJvm",
   "DockerCache",
   "DockerVolume",
   "AptCache",
   "SystemLogs",
   "StaleCache",
+  "BrowserCache",
+  "UserTrash",
+  "SnapFlatpak",
+  "IdeCache",
+  "LargeFiles",
 ];
 
 export default function App() {
   const [items, setItems] = useState<CleanItem[]>([]);
   const [freeDiskBytes, setFreeDiskBytes] = useState<number>(0);
+  const [totalReclaimedBytes, setTotalReclaimedBytes] = useState<number>(0);
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [isCleaning, setIsCleaning] = useState<boolean>(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -47,10 +57,16 @@ export default function App() {
 
     async function init() {
       try {
-        const freeSpace = await getDiskFreeSpace();
-        if (mounted) setFreeDiskBytes(freeSpace);
+        const [freeSpace, history] = await Promise.all([
+          getDiskFreeSpace().catch(() => 0),
+          getCleanupHistory().catch(() => null),
+        ]);
+        if (mounted) {
+          if (freeSpace > 0) setFreeDiskBytes(freeSpace);
+          if (history) setTotalReclaimedBytes(history.total_freed_bytes);
+        }
       } catch (err) {
-        console.warn("Failed to query disk free space:", err);
+        console.warn("Failed to query initial stats:", err);
       }
     }
 
@@ -165,9 +181,13 @@ export default function App() {
       const freedIds = new Set(report.freed_items);
       setItems((prev) => prev.filter((item) => !freedIds.has(item.id)));
 
-      // Refresh free disk space
-      const freeSpace = await getDiskFreeSpace().catch(() => 0);
+      // Refresh free disk space and history stats
+      const [freeSpace, history] = await Promise.all([
+        getDiskFreeSpace().catch(() => 0),
+        getCleanupHistory().catch(() => null),
+      ]);
       if (freeSpace > 0) setFreeDiskBytes(freeSpace);
+      if (history) setTotalReclaimedBytes(history.total_freed_bytes);
     } catch (err) {
       console.error("Clean error:", err);
       setCleanReport({
@@ -179,6 +199,30 @@ export default function App() {
       setIsCleaning(false);
     }
   }, [selectedItems, moveProjectToTrash]);
+
+  const hasTrashItems = useMemo(
+    () => items.some((it) => it.category === "UserTrash"),
+    [items]
+  );
+
+  const handleEmptyTrash = useCallback(async () => {
+    setIsCleaning(true);
+    try {
+      const report = await emptyTrash();
+      setCleanReport(report);
+      setItems((prev) => prev.filter((it) => it.category !== "UserTrash"));
+      const [freeSpace, history] = await Promise.all([
+        getDiskFreeSpace().catch(() => 0),
+        getCleanupHistory().catch(() => null),
+      ]);
+      if (freeSpace > 0) setFreeDiskBytes(freeSpace);
+      if (history) setTotalReclaimedBytes(history.total_freed_bytes);
+    } catch (err) {
+      console.error("Empty trash error:", err);
+    } finally {
+      setIsCleaning(false);
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
@@ -217,124 +261,94 @@ export default function App() {
           selectedBytes={selectedBytes}
           itemCount={items.length}
           isScanning={isScanning}
+          totalReclaimedBytes={totalReclaimedBytes}
         />
 
-        {/* Categories Checklist Grid */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-200">
-                Cache Categories
-              </h2>
-              <p className="text-xs text-slate-400">
-                Select categories to clean or click a card to filter the items
-                table
-              </p>
+        {/* Master-Detail Split Grid Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Master: Categories Sidebar */}
+          <section className="lg:col-span-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-200">
+                  Cache Categories
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Filter items or toggle entire groups
+                </p>
+              </div>
+              {activeCategoryFilter && (
+                <button
+                  type="button"
+                  onClick={() => setActiveCategoryFilter(null)}
+                  className="text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+                >
+                  Show All
+                </button>
+              )}
             </div>
-            {activeCategoryFilter && (
-              <button
-                type="button"
-                onClick={() => setActiveCategoryFilter(null)}
-                className="text-xs text-emerald-400 hover:text-emerald-300 font-medium"
-              >
-                Show All Categories
-              </button>
-            )}
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {ALL_CATEGORIES.map((cat) => {
-              const categoryItems = items.filter((it) => it.category === cat);
-              return (
-                <CategoryCard
-                  key={cat}
-                  category={cat}
-                  items={categoryItems}
-                  isActiveFilter={activeCategoryFilter === cat}
-                  onSelectCategoryFilter={setActiveCategoryFilter}
-                  onToggleSelectAll={handleToggleSelectAllCategory}
-                />
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Items Table Section */}
-        <section className="space-y-3 pb-20">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-200">
-                Granular Items
-              </h2>
-              <p className="text-xs text-slate-400">
-                Inspect specific directories and build caches before deleting
-              </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2.5">
+              {ALL_CATEGORIES.map((cat) => {
+                const categoryItems = items.filter((it) => it.category === cat);
+                return (
+                  <CategoryCard
+                    key={cat}
+                    category={cat}
+                    items={categoryItems}
+                    isActiveFilter={activeCategoryFilter === cat}
+                    onSelectCategoryFilter={setActiveCategoryFilter}
+                    onToggleSelectAll={handleToggleSelectAllCategory}
+                  />
+                );
+              })}
             </div>
-          </div>
+          </section>
 
-          <ItemTable
-            items={filteredItems}
-            allFilteredCount={filteredItems.length}
-            selectedFilteredCount={selectedFilteredCount}
-            activeCategoryFilter={activeCategoryFilter}
-            onClearCategoryFilter={() => setActiveCategoryFilter(null)}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            onToggleItemSelect={handleToggleItemSelect}
-            onToggleSelectAllFiltered={handleToggleSelectAllFiltered}
-            moveProjectToTrash={moveProjectToTrash}
-          />
-        </section>
+          {/* Detail: Granular Items Table */}
+          <section className="lg:col-span-8 space-y-3 pb-24">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-200">
+                  Granular Items
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Inspect and pick specific files or project artifacts
+                </p>
+              </div>
+            </div>
+
+            <ItemTable
+              items={filteredItems}
+              allFilteredCount={filteredItems.length}
+              selectedFilteredCount={selectedFilteredCount}
+              activeCategoryFilter={activeCategoryFilter}
+              onClearCategoryFilter={() => setActiveCategoryFilter(null)}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              onToggleItemSelect={handleToggleItemSelect}
+              onToggleSelectAllFiltered={handleToggleSelectAllFiltered}
+              moveProjectToTrash={moveProjectToTrash}
+            />
+          </section>
+        </div>
       </main>
 
-      {/* Sticky Bottom Action Bar (When items are selected) */}
-      {selectedItems.length > 0 && (
-        <aside className="fixed bottom-0 inset-x-0 z-40 bg-slate-900/90 backdrop-blur-md border-t border-slate-800 p-4 shadow-lg">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4 text-xs">
-              <span className="text-slate-300">
-                <strong className="font-semibold text-emerald-400">
-                  {selectedItems.length}
-                </strong>{" "}
-                {selectedItems.length === 1 ? "item" : "items"} selected
-              </span>
-              <span className="h-4 w-px bg-slate-700" />
-              <span className="text-slate-300">
-                Reclaim:{" "}
-                <strong className="font-mono tabular-nums text-sm font-bold text-slate-100">
-                  {formatBytes(selectedBytes)}
-                </strong>
-              </span>
-            </div>
-
-            <div className="flex items-center gap-4 w-full sm:w-auto justify-end">
-              {/* Trash vs Direct Purge switch */}
-              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={moveProjectToTrash}
-                  onChange={(e) => setMoveProjectToTrash(e.target.checked)}
-                  className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
-                />
-                <span>Safe Trash for project folders</span>
-              </label>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setCleanReport(null);
-                  setIsCleanModalOpen(true);
-                }}
-                disabled={isCleaning}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-all active:scale-[0.98] shadow-sm shadow-emerald-950"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Clean Selected</span>
-              </button>
-            </div>
-          </div>
-        </aside>
-      )}
+      {/* Sticky Safety Action Bar */}
+      <ActionBar
+        selectedCount={selectedItems.length}
+        selectedBytes={selectedBytes}
+        moveProjectToTrash={moveProjectToTrash}
+        onToggleMoveProjectToTrash={setMoveProjectToTrash}
+        onOpenCleanModal={() => {
+          setCleanReport(null);
+          setIsCleanModalOpen(true);
+        }}
+        onEmptyTrash={handleEmptyTrash}
+        hasTrashItems={hasTrashItems}
+        isCleaning={isCleaning}
+        isScanning={isScanning}
+      />
 
       {/* Confirmation & Result Modal */}
       <CleanConfirmModal

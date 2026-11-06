@@ -265,6 +265,16 @@ pub fn scan_system_caches_with_config(
         if let Some(ref thumb_dir) = config.thumbnails_dir {
             excludes.push(thumb_dir.clone());
         }
+        // Exclude browser cache directories from generic stale cache scan
+        excludes.push(cache_dir.join("google-chrome"));
+        excludes.push(cache_dir.join("google-chrome-beta"));
+        excludes.push(cache_dir.join("google-chrome-unstable"));
+        excludes.push(cache_dir.join("mozilla"));
+        excludes.push(cache_dir.join("BraveSoftware"));
+        excludes.push(cache_dir.join("brave"));
+        excludes.push(cache_dir.join("brave-browser"));
+        excludes.push(cache_dir.join("chromium"));
+
         if let Ok(stale_items) = scan_stale_cache_files(cache_dir, stale_days, &excludes) {
             items.extend(stale_items);
         }

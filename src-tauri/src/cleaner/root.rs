@@ -36,6 +36,20 @@ pub fn build_root_batch_script(items: &[CleanItem]) -> Result<String, AppError> 
                     paths_to_remove.insert(path_str.clone());
                 }
             }
+            CleanCategory::SnapFlatpak => {
+                if item.id.starts_with("snap:") {
+                    let parts: Vec<&str> = item.id.split(':').collect();
+                    if parts.len() >= 3 {
+                        let name = parts[1];
+                        let rev = parts[2];
+                        commands.push(format!("snap remove --revision={} {}", rev, name));
+                    }
+                } else if let Some(ref path_str) = item.path {
+                    let path = Path::new(path_str);
+                    validate_safe_path(path)?;
+                    paths_to_remove.insert(path_str.clone());
+                }
+            }
             _ => {
                 if let Some(ref path_str) = item.path {
                     let path = Path::new(path_str);

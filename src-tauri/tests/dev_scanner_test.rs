@@ -108,8 +108,11 @@ fn test_scan_dev_caches_empty_roots_handles_globals() {
     let results = scan_dev_caches(&[]).expect("scan_dev_caches with empty roots should succeed");
     for item in &results {
         assert!(
-            item.category == CleanCategory::DevRust || item.category == CleanCategory::DevGo,
-            "global cache items must be DevRust or DevGo"
+            item.category == CleanCategory::DevRust
+                || item.category == CleanCategory::DevGo
+                || item.category == CleanCategory::DevPython
+                || item.category == CleanCategory::DevJvm,
+            "global cache items must be DevRust, DevGo, DevPython, or DevJvm"
         );
         assert!(
             !item.supports_trash,

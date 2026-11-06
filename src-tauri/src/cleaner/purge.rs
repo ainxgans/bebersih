@@ -38,5 +38,17 @@ pub fn purge_path(path: &Path) -> Result<(), AppError> {
         }
     }
 
+    // FreeDesktop trash cleanup: also clean corresponding .trashinfo file if purging from Trash/files
+    if let (Some(parent), Some(file_name)) = (path.parent(), path.file_name()) {
+        if parent.file_name().and_then(|n| n.to_str()) == Some("files") {
+            if let Some(trash_root) = parent.parent() {
+                let info_file = trash_root.join("info").join(format!("{}.trashinfo", file_name.to_string_lossy()));
+                if info_file.exists() {
+                    let _ = fs::remove_file(info_file);
+                }
+            }
+        }
+    }
+
     Ok(())
 }

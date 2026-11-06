@@ -2,11 +2,18 @@ export type CleanCategory =
   | "DevRust"
   | "DevGo"
   | "DevNode"
+  | "DevPython"
+  | "DevJvm"
   | "DockerCache"
   | "DockerVolume"
   | "AptCache"
   | "SystemLogs"
-  | "StaleCache";
+  | "StaleCache"
+  | "BrowserCache"
+  | "UserTrash"
+  | "SnapFlatpak"
+  | "IdeCache"
+  | "LargeFiles";
 
 export interface CleanItem {
   id: string;
@@ -31,10 +38,24 @@ export interface CleanReport {
   errors: string[];
 }
 
+export interface CleanupRecord {
+  id: string;
+  timestamp_epoch_secs: number;
+  deleted_bytes: number;
+  freed_items_count: number;
+  categories: CleanCategory[];
+}
+
+export interface CleanupHistory {
+  total_freed_bytes: number;
+  total_clean_runs: number;
+  records: CleanupRecord[];
+}
+
 export interface CategoryMeta {
   id: CleanCategory;
   label: string;
-  group: "Developer" | "Docker" | "System" | "Stale";
+  group: "Developer" | "Docker" | "System" | "Stale" | "Browser";
   description: string;
   defaultTrash: boolean;
 }
@@ -59,6 +80,20 @@ export const CATEGORY_DEFINITIONS: Record<CleanCategory, CategoryMeta> = {
     label: "node_modules & npm",
     group: "Developer",
     description: "Node.js dependencies and npm cache",
+    defaultTrash: true,
+  },
+  DevPython: {
+    id: "DevPython",
+    label: "Python .venv & Cache",
+    group: "Developer",
+    description: "Virtualenvs, __pycache__, pip, and uv package caches",
+    defaultTrash: true,
+  },
+  DevJvm: {
+    id: "DevJvm",
+    label: "JVM (Gradle & Maven)",
+    group: "Developer",
+    description: "Gradle caches, wrapper dists, and Maven local repositories",
     defaultTrash: true,
   },
   DockerCache: {
@@ -95,5 +130,40 @@ export const CATEGORY_DEFINITIONS: Record<CleanCategory, CategoryMeta> = {
     group: "Stale",
     description: "Thumbnails and ~/.cache files older than 30 days",
     defaultTrash: false,
+  },
+  BrowserCache: {
+    id: "BrowserCache",
+    label: "Browser Caches",
+    group: "Browser",
+    description: "Media and asset caches from Chrome, Firefox, Brave, and Chromium",
+    defaultTrash: false,
+  },
+  UserTrash: {
+    id: "UserTrash",
+    label: "User Trash",
+    group: "System",
+    description: "Deleted files and folders in ~/.local/share/Trash",
+    defaultTrash: false,
+  },
+  SnapFlatpak: {
+    id: "SnapFlatpak",
+    label: "Snap & Flatpak Packages",
+    group: "System",
+    description: "Disabled snap revisions and unused flatpak runtimes",
+    defaultTrash: false,
+  },
+  IdeCache: {
+    id: "IdeCache",
+    label: "IDE & Editor Caches",
+    group: "Developer",
+    description: "VS Code, Cursor, and JetBrains IDE caches & cached data",
+    defaultTrash: true,
+  },
+  LargeFiles: {
+    id: "LargeFiles",
+    label: "Large Stray Files & Archives",
+    group: "Stale",
+    description: "Old ISO disk images, stray tar/zip archives, and database dumps (>500MB)",
+    defaultTrash: true,
   },
 };

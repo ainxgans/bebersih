@@ -1,7 +1,11 @@
 use std::path::PathBuf;
 
 use crate::models::{CleanItem, CleanReport};
-use crate::scanner::{scan_dev_caches, scan_docker_caches, scan_system_caches};
+use crate::scanner::{
+    empty_user_trash, scan_browser_caches, scan_dev_caches, scan_docker_caches,
+    scan_ide_caches, scan_large_files, scan_snap_and_flatpak, scan_system_caches,
+    scan_user_trash,
+};
 
 fn get_disk_free_space_internal() -> Result<u64, String> {
     // ponytail: df -B1 is standard on Linux/Ubuntu coreutils.
@@ -60,12 +64,32 @@ pub async fn scan_all(custom_paths: Vec<String>) -> Result<Vec<CleanItem>, Strin
             all_items.extend(dev_items);
         }
 
+        if let Ok(browser_items) = scan_browser_caches() {
+            all_items.extend(browser_items);
+        }
+
         if let Ok(sys_items) = scan_system_caches(30) {
             all_items.extend(sys_items);
         }
 
+        if let Ok(trash_items) = scan_user_trash() {
+            all_items.extend(trash_items);
+        }
+
         if let Ok(docker_items) = scan_docker_caches() {
             all_items.extend(docker_items);
+        }
+
+        if let Ok(pkg_items) = scan_snap_and_flatpak() {
+            all_items.extend(pkg_items);
+        }
+
+        if let Ok(ide_items) = scan_ide_caches() {
+            all_items.extend(ide_items);
+        }
+
+        if let Ok(stray_items) = scan_large_files() {
+            all_items.extend(stray_items);
         }
 
         Ok(all_items)
@@ -75,13 +99,70 @@ pub async fn scan_all(custom_paths: Vec<String>) -> Result<Vec<CleanItem>, Strin
 }
 
 #[tauri::command]
+pub async fn empty_trash() -> Result<CleanReport, String> {
+    tokio::task::spawn_blocking(|| empty_user_trash().map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn clean_selected(
     items: Vec<CleanItem>,
     move_project_to_trash: bool,
 ) -> Result<CleanReport, String> {
     tokio::task::spawn_blocking(move || {
-        crate::cleaner::clean_items(&items, move_project_to_trash)
-            .map_err(|e| e.to_string())
+        let config = crate::whitelist::WhitelistConfig::load_default();
+        let report = crate::cleaner::clean_items_with_whitelist(&items, move_project_to_trash, &config)
+            .map_err(|e| e.to_string())?;
+
+        if let Some(hist_path) = crate::history::CleanupHistory::default_path() {
+            let _ = crate::history::record_cleanup_to_file(&report, &items, &hist_path);
+        }
+
+        Ok(report)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_cleanup_history() -> Result<crate::history::CleanupHistory, String> {
+    tokio::task::spawn_blocking(|| Ok(crate::history::CleanupHistory::load_default()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_whitelist() -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(|| {
+        let config = crate::whitelist::WhitelistConfig::load_default();
+        Ok(config.whitelisted_paths)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn add_to_whitelist(path: String) -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut config = crate::whitelist::WhitelistConfig::load_default();
+        if !config.whitelisted_paths.contains(&path) {
+            config.whitelisted_paths.push(path);
+            config.save_default().map_err(|e| e.to_string())?;
+        }
+        Ok(config.whitelisted_paths)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn remove_from_whitelist(path: String) -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut config = crate::whitelist::WhitelistConfig::load_default();
+        config.whitelisted_paths.retain(|p| p != &path);
+        config.save_default().map_err(|e| e.to_string())?;
+        Ok(config.whitelisted_paths)
     })
     .await
     .map_err(|e| e.to_string())?

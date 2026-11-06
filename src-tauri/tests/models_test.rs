@@ -7,11 +7,18 @@ fn test_clean_category_variants_serde() {
         CleanCategory::DevRust,
         CleanCategory::DevGo,
         CleanCategory::DevNode,
+        CleanCategory::DevPython,
+        CleanCategory::DevJvm,
         CleanCategory::DockerCache,
         CleanCategory::DockerVolume,
         CleanCategory::AptCache,
         CleanCategory::SystemLogs,
         CleanCategory::StaleCache,
+        CleanCategory::BrowserCache,
+        CleanCategory::UserTrash,
+        CleanCategory::SnapFlatpak,
+        CleanCategory::IdeCache,
+        CleanCategory::LargeFiles,
     ];
 
     for cat in categories {
